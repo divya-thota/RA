@@ -1,10 +1,10 @@
 import MainWindowFunctions as mwf
 import VisualizationPopup as vp
-from PyQt5.QtWidgets import QDialog, QPushButton, QVBoxLayout, QFormLayout, QHBoxLayout, QLabel, QComboBox,QWidget,QLineEdit
+from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QFormLayout, QHBoxLayout, QLabel, QComboBox,QWidget,QLineEdit,QFrame,QTabWidget,QTabBar
 import pandas as pd
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from PyQt5.QtCore import QRect,QFile,QTextStream,Qt
+from PyQt5.QtCore import QRect,QFile,QTextStream,Qt,QLine
 import matplotlib.pyplot as plt
 import scanpy as sc
 import anndata as anndata
@@ -24,15 +24,25 @@ adata = anndata.AnnData(
   var = None)
 grouplen = 0
 
-class Window(QDialog):
+class Window(QWidget):
 
     # constructor
-    def __init__(self, adataFetched):
-        super(Window, self).__init__()
-        self.setWindowTitle('Single cell RNA-Seq')
-        self.showMaximized()
-        self.setWindowFlag(Qt.WindowMinimizeButtonHint, True)
-        self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
+    def __init__(self, parent, adataFetched):
+        super(Window, self).__init__(parent)
+        self.parent = parent
+        # self.init_UI()
+        # self.setWindowTitle('Single cell RNA-Seq')
+        # self.showMaximized()
+        # self.setWindowFlag(Qt.WindowMinimizeButtonHint, True)
+        # self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
+
+        self.tabs = QTabWidget()
+        self.tab1 = QWidget()
+        self.tabs.setTabsClosable(True)
+        self.tabs.tabCloseRequested.connect(lambda index: self.tabs.removeTab(index))
+        self.tabs.addTab(self.tab1,"Single cell RNA-Seqencing")
+        self.tab1.layout = QHBoxLayout()
+        self.tabs.tabBar().setTabButton(0, QTabBar.RightSide,None)
 
         global adata, genes, gene_ids
         adata = adataFetched
@@ -74,18 +84,24 @@ class Window(QDialog):
         self.compareButton = QPushButton("Compare", self)
         self.compareButton.pressed.connect(self.compare)
         self.compareButton.hide()
+        self.resetButton = QPushButton("Reset", self)
+        self.resetButton.pressed.connect(self.reset)
+        self.resetButton.hide()
+        
 
         # self.resetButton = QPushButton("Reset", self)
         # self.resetButton.pressed.connect(self.reset):
 
-        self.outerLayout = QVBoxLayout()
+        self.outerLayout = QVBoxLayout(self)
         self.attributeLayout = QFormLayout()
+        self.graphLayout = QVBoxLayout()
         self.clusteringLayout = QHBoxLayout()
         self.comparisonLayout = QHBoxLayout()
         
 
         self.attributeLayout.addRow(self.typeLabel,self.typeComboBox)
         self.attributeLayout.addRow(self.gLabel,self.gComboBox)
+        self.attributeLayout.addWidget(self.plotButton)
 
         self.clusteringLayout.addWidget(self.manualClusteringButton)
         self.clusteringLayout.addWidget(self.leidenClusteringButton)
@@ -93,32 +109,44 @@ class Window(QDialog):
         self.comparisonLayout.addWidget(self.c1Label,1)
         self.comparisonLayout.addWidget(self.c2Label,1)
         self.comparisonLayout.addWidget(self.compareButton,1)
+        self.comparisonLayout.addWidget(self.resetButton,1)
 
-        self.outerLayout.addLayout(self.attributeLayout)
-        self.outerLayout.addWidget(self.plotButton)
-        self.outerLayout.addWidget(self.canvas,1)
-        
-        # self.outerLayout.addLayout(self.comparisonLayout)
-        
-
+        Separator = QFrame()
+        Separator.setFrameShape(QFrame.VLine)
+        Separator.setLineWidth(1)
+        self.tab1.layout.addLayout(self.attributeLayout,1)
+        self.tab1.layout.addWidget(Separator)
+        self.tab1.layout.addLayout(self.graphLayout,2)
+        # self.outerLayout.addLayout(self.comparisonLayout)                                                                                                                                                                                                     
         # layout.setContentsMargins(left, top, right, bottom)
         self.attributeLayout.setContentsMargins(0, 0, 0, 0)
-        self.outerLayout.setContentsMargins(50, 20, 50, 50)
+        self.tab1.layout.setContentsMargins(50, 20, 50, 50)
+        self.tab1.setLayout(self.tab1.layout)
+        self.outerLayout.addWidget(self.tabs)
         self.setLayout(self.outerLayout)
+        self.plotScatter()
 
-    # def reset(self, *args):
-    #     Cluster1.ClusterName = ""
-    #     Cluster1.ClusterData = []
-    #     Cluster2.ClusterName = ""
-    #     Cluster2.ClusterData = []
-    #     self.c1Label.setText("")
-    #     self.c2Label.setText("")
+    def reset(self, *args):
+        Cluster1.ClusterName = ""
+        Cluster1.ClusterData = []
+        Cluster2.ClusterName = ""
+        Cluster2.ClusterData = []
+        self.c1Label.setText("")
+        self.c2Label.setText("")
 
     def plotScatter(self, *args):
-        
-        self.outerLayout.removeItem(self.clusteringLayout)
+        self.reset()
+        self.graphLayout.removeItem(self.comparisonLayout)
+        self.c1Label.hide()
+        self.c2Label.hide()
+        self.compareButton.hide()
+        self.resetButton.hide()
+        self.graphLayout.removeItem(self.clusteringLayout)
         self.manualClusteringButton.hide()
         self.leidenClusteringButton.hide()
+        self.graphLayout.removeWidget(self.calcDiffGeneButton)
+        self.calcDiffGeneButton.hide()
+        adata.obs['leiden'] =None
         # finding the content of current item in combo box
         plottype = self.typeComboBox.currentText()
         genetype = self.gComboBox.currentText()
@@ -136,8 +164,8 @@ class Window(QDialog):
         selector = SelectFromCollection(fig.axes[0], fig.axes[0].collections[0], plottype, self.c1Label, self.c2Label)
         
         self.canvas.draw()
-        self.outerLayout.addWidget(self.canvas,1)
-        self.outerLayout.addLayout(self.clusteringLayout)
+        self.graphLayout.addWidget(self.canvas)
+        self.graphLayout.addLayout(self.clusteringLayout)
         self.manualClusteringButton.show()
         self.leidenClusteringButton.show()
         # self.outerLayout.addWidget(self.resetButton)
@@ -161,12 +189,13 @@ class Window(QDialog):
             fig = sc.pl.umap(adata, color='leiden', return_fig=True)
         self.canvas = FigureCanvas(fig)
         self.canvas.draw()
-        self.outerLayout.removeItem(self.comparisonLayout)
+        self.graphLayout.removeItem(self.comparisonLayout)
         self.c1Label.hide()
         self.c2Label.hide()
         self.compareButton.hide()
-        self.outerLayout.addWidget(self.canvas,1)
-        self.outerLayout.addWidget(self.calcDiffGeneButton)
+        self.resetButton.hide()
+        self.graphLayout.addWidget(self.canvas,1)
+        self.graphLayout.addWidget(self.calcDiffGeneButton)
         self.calcDiffGeneButton.show()
         # self.outerLayout.addWidget(self.resetButton)
 
@@ -188,20 +217,25 @@ class Window(QDialog):
             fig = sc.pl.umap(adata, color='leiden', return_fig=True)
         self.canvas = FigureCanvas(fig)
         self.canvas.draw()
-        self.outerLayout.addWidget(self.canvas,1)
-        self.outerLayout.addWidget(self.calcDiffGeneButton)
+        self.graphLayout.addWidget(self.canvas,1)
+        self.graphLayout.addWidget(self.calcDiffGeneButton)
         self.calcDiffGeneButton.show()
         # self.outerLayout.addWidget(self.resetButton)
 
     def calcDiffGene(self, *args):
+        self.parent.statusbar.showMessage('Executing differential gene analysis...')
         sc.tl.rank_genes_groups(adata, groupby='leiden', method='wilcoxon', key_added='wilcoxon')
         sc.tl.dendrogram(adata, 'leiden')
+        self.parent.statusbar.showMessage('Creating xlsx file of differential gene expression data...')
         mwf.createXlsx(adata,grouplen)
+        self.parent.statusbar.showMessage('Generating graphs for visualization...')
         mwf.generateGraphs(adata, AutoClustering)
-        self.visualizationWindow = vp.visualizationPopup(grouplen,AutoClustering)
-        self.visualizationWindow.show()
+        self.tab2 = vp.visualizationPopup(grouplen,AutoClustering)
+        self.tabs.addTab(self.tab2,"Differential Gene Expression Representation")
+        self.tabs.setCurrentIndex(1)
+        self.parent.statusbar.clearMessage()
         self.canvas.close()
-        self.outerLayout.removeWidget(self.calcDiffGeneButton)
+        self.graphLayout.removeWidget(self.calcDiffGeneButton)
         self.calcDiffGeneButton.hide()
         plottype = self.typeComboBox.currentText()
         if plottype == 'PCA':
@@ -211,8 +245,8 @@ class Window(QDialog):
             fig = sc.pl.umap(adata, color='leiden', return_fig=True)
         self.canvas = FigureCanvas(fig)
         self.canvas.draw()
-        self.outerLayout.addWidget(self.canvas,1)
-        self.outerLayout.addWidget(self.calcDiffGeneButton)
+        self.graphLayout.addWidget(self.canvas,1)
+        self.graphLayout.addWidget(self.calcDiffGeneButton)
         self.calcDiffGeneButton.show()
     
     def manualClustering(self, *args):
@@ -222,8 +256,11 @@ class Window(QDialog):
         global obsm
         obsm = adata.obsm.to_df()
         # self.clusteringLayout.setVisible(False)
-        self.outerLayout.addLayout(self.comparisonLayout)
+        self.graphLayout.addLayout(self.comparisonLayout)
+        self.c1Label.show()
+        self.c2Label.show()
         self.compareButton.show()
+        self.resetButton.show()
         # self.outerLayout.addWidget(self.resetButton)
 
 
@@ -309,3 +346,4 @@ class ClusterSelectPopup(QWidget):
             self.c2Label.setText(Cluster2.ClusterName)
         selectedArray=[]
         self.close()
+

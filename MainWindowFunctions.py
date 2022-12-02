@@ -28,7 +28,7 @@ def createXlsx(adata, grouplen):
         if df.empty:
             df = sc.get.rank_genes_groups_df(adata, group=str(group), key='wilcoxon')
         else:
-            df.append(sc.get.rank_genes_groups_df(adata, group=str(group), key='wilcoxon'))
+            df = pd.concat([df,sc.get.rank_genes_groups_df(adata, group=str(group), key='wilcoxon')])
     df.to_excel('Differential Gene Expression Information.xlsx', index=False)
 
 #ELEPHANT

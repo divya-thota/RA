@@ -26,24 +26,25 @@ class visualizationPopup(QWidget):
 
         #ELEPHANT Make rank grapg default
         self.figure = plt.figure()
-        self.canvas = FigureCanvas(self.figure)
+        self.canvasPop = FigureCanvas(self.figure)
 
-        self.toolbar = NavigationToolbar(self.canvas, self)
+        self.toolbar = NavigationToolbar(self.canvasPop, self)
         self.plotSelectionLayout = QFormLayout()
         self.plotSelectionLayout.addRow(self.plotLabel,self.plotComboBox)
 
         grid = QVBoxLayout()
         grid.addLayout(self.plotSelectionLayout)
         grid.addWidget(self.toolbar)
-        grid.addWidget(self.canvas,1)
+        grid.addWidget(self.canvasPop,1)
         self.setLayout(grid)
+        self.updateGraph()
         
 
     def updateGraph(self, *args):
 
         plot = self.plotComboBox.currentText()
         self.figure.clear() #clear current figure
-        self.canvas.flush_events()
+        self.canvasPop.flush_events()
         if plot == 'Gene Ranking':
             ax = self.figure.add_subplot(111) # create an axis
             img = cv.imread('./figures/rank_genes_groups_leiden.png')
@@ -88,4 +89,4 @@ class visualizationPopup(QWidget):
             ax = self.figure.add_subplot(111) # create an axis
             img = cv.imread('./figures/tracksplot.png')
             ax.imshow(img)
-        self.canvas.draw()
+        self.canvasPop.draw()
