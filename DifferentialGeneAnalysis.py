@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QFormLayout, QHBoxLayout, 
 import pandas as pd
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from PyQt5.QtCore import QRect,QFile,QTextStream,Qt,QLine
+from PyQt5.QtCore import Qt
 import matplotlib.pyplot as plt
 import scanpy as sc
 import anndata as anndata
@@ -26,16 +26,9 @@ grouplen = 0
 
 class Window(QWidget):
 
-    # constructor
     def __init__(self, parent, adataFetched):
         super(Window, self).__init__(parent)
         self.parent = parent
-        # self.init_UI()
-        # self.setWindowTitle('Single cell RNA-Seq')
-        # self.showMaximized()
-        # self.setWindowFlag(Qt.WindowMinimizeButtonHint, True)
-        # self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
-
         self.tabs = QTabWidget()
         self.tab1 = QWidget()
         self.tabs.setTabsClosable(True)
@@ -48,32 +41,34 @@ class Window(QWidget):
         adata = adataFetched
         genes = pd.DataFrame(adata.var.gene_ids)
         gene_ids = genes['gene_ids'].to_numpy()
+
         self.typeComboBox = QComboBox(self)
         self.typeComboBox.addItems(['PCA', 'UMAP'])
         self.typeLabel = QLabel("Type:")
         self.typeLabel.setBuddy(self.typeComboBox)
-        
         self.gComboBox = QComboBox()
         self.gComboBox.addItems(gene_ids)
         self.gLabel = QLabel("Gene:")
         self.gLabel.setBuddy(self.gComboBox)
-
         self.plotButton = QPushButton("Plot Current Attributes", self)
         self.plotButton.pressed.connect(self.plotScatter)
+
+        self.Separator = QFrame()
+        self.Separator.setFrameShape(QFrame.VLine)
+        self.Separator.setLineWidth(1)
+
+        self.figure = plt.figure()
+        self.canvas = FigureCanvas(self.figure)
+        self.compareWindow = None
+
+        self.calcDiffGeneButton = QPushButton("Calculate Differential Gene Expression", self)
+        self.calcDiffGeneButton.pressed.connect(self.calcDiffGene)
+        self.calcDiffGeneButton.hide()
 
         self.manualClusteringButton = QPushButton("Manual Clustering", self)
         self.manualClusteringButton.pressed.connect(self.manualClustering)
         self.leidenClusteringButton = QPushButton("Automatic Clustering", self)
         self.leidenClusteringButton.pressed.connect(self.leidenClustering)
-        self.calcDiffGeneButton = QPushButton("Calculate Differential Gene Expression", self)
-        self.calcDiffGeneButton.pressed.connect(self.calcDiffGene)
-        self.manualClusteringButton.hide()
-        self.leidenClusteringButton.hide()
-        self.calcDiffGeneButton.hide()
-        
-        self.figure = plt.figure()
-        self.canvas = FigureCanvas(self.figure)
-        self.compareWindow = None
 
         self.c1Label = QLineEdit(Cluster1.ClusterName)
         self.c2Label = QLineEdit(Cluster2.ClusterName)
@@ -83,22 +78,15 @@ class Window(QWidget):
         self.c2Label.setAlignment(Qt.AlignCenter)
         self.compareButton = QPushButton("Compare", self)
         self.compareButton.pressed.connect(self.compare)
-        self.compareButton.hide()
         self.resetButton = QPushButton("Reset", self)
         self.resetButton.pressed.connect(self.reset)
-        self.resetButton.hide()
         
-
-        # self.resetButton = QPushButton("Reset", self)
-        # self.resetButton.pressed.connect(self.reset):
-
         self.outerLayout = QVBoxLayout(self)
         self.attributeLayout = QFormLayout()
         self.graphLayout = QVBoxLayout()
         self.clusteringLayout = QHBoxLayout()
         self.comparisonLayout = QHBoxLayout()
         
-
         self.attributeLayout.addRow(self.typeLabel,self.typeComboBox)
         self.attributeLayout.addRow(self.gLabel,self.gComboBox)
         self.attributeLayout.addWidget(self.plotButton)
@@ -111,19 +99,17 @@ class Window(QWidget):
         self.comparisonLayout.addWidget(self.compareButton,1)
         self.comparisonLayout.addWidget(self.resetButton,1)
 
-        Separator = QFrame()
-        Separator.setFrameShape(QFrame.VLine)
-        Separator.setLineWidth(1)
         self.tab1.layout.addLayout(self.attributeLayout,1)
-        self.tab1.layout.addWidget(Separator)
-        self.tab1.layout.addLayout(self.graphLayout,2)
-        # self.outerLayout.addLayout(self.comparisonLayout)                                                                                                                                                                                                     
+        self.tab1.layout.addWidget(self.Separator)
+        self.tab1.layout.addLayout(self.graphLayout,2)                                                                                                                                                                                                   
         # layout.setContentsMargins(left, top, right, bottom)
         self.attributeLayout.setContentsMargins(0, 0, 0, 0)
         self.tab1.layout.setContentsMargins(50, 20, 50, 50)
         self.tab1.setLayout(self.tab1.layout)
         self.outerLayout.addWidget(self.tabs)
         self.setLayout(self.outerLayout)
+        self.hideClusteringLayout()
+        self.hideComparisonLayout()
         self.plotScatter()
 
     def reset(self, *args):
@@ -134,45 +120,48 @@ class Window(QWidget):
         self.c1Label.setText("")
         self.c2Label.setText("")
 
-    def plotScatter(self, *args):
-        self.reset()
+    def hideClusteringLayout(self, *args):
+        self.graphLayout.removeItem(self.clusteringLayout)
+        self.manualClusteringButton.hide()
+        self.leidenClusteringButton.hide()
+    
+    def hideComparisonLayout(self, *args):
         self.graphLayout.removeItem(self.comparisonLayout)
         self.c1Label.hide()
         self.c2Label.hide()
         self.compareButton.hide()
         self.resetButton.hide()
-        self.graphLayout.removeItem(self.clusteringLayout)
-        self.manualClusteringButton.hide()
-        self.leidenClusteringButton.hide()
+    
+    def scatterPlotFigure(self, plottype, color):
+        if plottype == 'PCA':
+            fig = sc.pl.pca(adata, color=color, return_fig=True)
+        elif plottype == 'UMAP':
+            fig = sc.pl.umap(adata, color=color, return_fig=True)
+        return fig
+
+    def plotScatter(self, *args):
+        self.tabs.removeTab(1)
+        self.reset()
+        self.hideComparisonLayout()
+        self.hideClusteringLayout()
         self.graphLayout.removeWidget(self.calcDiffGeneButton)
         self.calcDiffGeneButton.hide()
         adata.obs['leiden'] =None
-        # finding the content of current item in combo box
         plottype = self.typeComboBox.currentText()
         genetype = self.gComboBox.currentText()
         gene = genes.index[genes['gene_ids'] == genetype].tolist()[0]
-        self.figure.clear() #clear current figure
+        self.figure.clear() 
         self.canvas.close()
-        if plottype == 'PCA':
-            fig = sc.pl.pca(adata, color=gene, return_fig=True)
-            self.canvas = FigureCanvas(fig)
-            # self.figure.add_axes(ax)
-        elif plottype == 'UMAP':
-            fig = sc.pl.umap(adata, color=gene, return_fig=True)
-            self.canvas = FigureCanvas(fig)
-            
+        fig = self.scatterPlotFigure(plottype,gene)
+        self.canvas = FigureCanvas(fig)
         selector = SelectFromCollection(fig.axes[0], fig.axes[0].collections[0], plottype, self.c1Label, self.c2Label)
-        
         self.canvas.draw()
         self.graphLayout.addWidget(self.canvas)
         self.graphLayout.addLayout(self.clusteringLayout)
         self.manualClusteringButton.show()
         self.leidenClusteringButton.show()
-        # self.outerLayout.addWidget(self.resetButton)
-        
 
     def compare(self, *args):
-        # self.outerLayout.removeWidget(self.resetButton)
         global grouplen
         clusterCategory = pd.Series(["0","1"], dtype='category')
         plottype = self.typeComboBox.currentText()
@@ -182,23 +171,13 @@ class Window(QWidget):
             adata.obs.loc[barcode,'leiden'] = clusterCategory[1]
         grouplen = len(adata.obs['leiden'].value_counts())
         self.canvas.close()
-        if plottype == 'PCA':
-            fig = sc.pl.pca(adata, color='leiden', return_fig=True)
-            # self.figure.add_axes(ax)
-        elif plottype == 'UMAP':
-            fig = sc.pl.umap(adata, color='leiden', return_fig=True)
+        fig = self.scatterPlotFigure(plottype,'leiden')
         self.canvas = FigureCanvas(fig)
         self.canvas.draw()
-        self.graphLayout.removeItem(self.comparisonLayout)
-        self.c1Label.hide()
-        self.c2Label.hide()
-        self.compareButton.hide()
-        self.resetButton.hide()
+        self.hideComparisonLayout()
         self.graphLayout.addWidget(self.canvas,1)
         self.graphLayout.addWidget(self.calcDiffGeneButton)
         self.calcDiffGeneButton.show()
-        # self.outerLayout.addWidget(self.resetButton)
-
 
     def leidenClustering(self, *args):
         global AutoClustering, grouplen
@@ -210,17 +189,12 @@ class Window(QWidget):
         if grouplen>2:
             AutoClustering = True
         self.canvas.close()
-        if plottype == 'PCA':
-            fig = sc.pl.pca(adata, color='leiden', return_fig=True)
-            # self.figure.add_axes(ax)
-        elif plottype == 'UMAP':
-            fig = sc.pl.umap(adata, color='leiden', return_fig=True)
+        fig = self.scatterPlotFigure(plottype,'leiden')
         self.canvas = FigureCanvas(fig)
         self.canvas.draw()
         self.graphLayout.addWidget(self.canvas,1)
         self.graphLayout.addWidget(self.calcDiffGeneButton)
         self.calcDiffGeneButton.show()
-        # self.outerLayout.addWidget(self.resetButton)
 
     def calcDiffGene(self, *args):
         self.parent.statusbar.showMessage('Executing differential gene analysis...')
@@ -238,11 +212,7 @@ class Window(QWidget):
         self.graphLayout.removeWidget(self.calcDiffGeneButton)
         self.calcDiffGeneButton.hide()
         plottype = self.typeComboBox.currentText()
-        if plottype == 'PCA':
-            fig = sc.pl.pca(adata, color='leiden', return_fig=True)
-            # self.figure.add_axes(ax)
-        elif plottype == 'UMAP':
-            fig = sc.pl.umap(adata, color='leiden', return_fig=True)
+        fig = self.scatterPlotFigure(plottype,'leiden')
         self.canvas = FigureCanvas(fig)
         self.canvas.draw()
         self.graphLayout.addWidget(self.canvas,1)
@@ -252,17 +222,13 @@ class Window(QWidget):
     def manualClustering(self, *args):
         self.manualClusteringButton.hide()
         self.leidenClusteringButton.hide()
-        # self.outerLayout.removeWidget(self.resetButton)
         global obsm
         obsm = adata.obsm.to_df()
-        # self.clusteringLayout.setVisible(False)
         self.graphLayout.addLayout(self.comparisonLayout)
         self.c1Label.show()
         self.c2Label.show()
         self.compareButton.show()
         self.resetButton.show()
-        # self.outerLayout.addWidget(self.resetButton)
-
 
 class SelectFromCollection:
 
@@ -275,15 +241,12 @@ class SelectFromCollection:
         self.plottype = plottype
         self.c1Label = c1Label
         self.c2Label = c2Label
-
         if plottype == 'PCA':
             self.x='X_pca1'
             self.y='X_pca2'
         elif plottype == 'UMAP':
             self.x='X_umap1'
             self.y='X_umap2'
-
-        # Ensure that we have separate colors for each object
         self.fc = collection.get_facecolors()
         if len(self.fc) == 0:
             raise ValueError('Collection must have a facecolor')
@@ -303,7 +266,6 @@ class SelectFromCollection:
             selectedGene = obsm.index[(obsm[self.x] == selected[0]) & (obsm[self.y] == selected[1])][0]
             selectedArray.append(selectedGene)
         self.compareWindow = ClusterSelectPopup(self.c1Label, self.c2Label)
-        # self.compareWindow.setGeometry(QRect(100, 100, 400, 200))
         self.compareWindow.show()
 
     def disconnect(self):
@@ -311,7 +273,6 @@ class SelectFromCollection:
         self.fc[:, -1] = 1
         self.collection.set_facecolors(self.fc)
         self.canvas.draw_idle()
-
 
 class ClusterSelectPopup(QWidget):
     def __init__(self, c1Label, c2Label):
@@ -321,14 +282,12 @@ class ClusterSelectPopup(QWidget):
         self.textbox = QLineEdit(self)
         self.textbox.move(20, 20)
         self.textbox.resize(280,40)
-        # self.textbox.setAlignment(Qt.AlignCenter)
         self.button = QPushButton('OK', self)
         self.button.setStyleSheet('background-color: #7ad0eb;')
         self.button.move(20,80)
         self.button.resize(280,40)
         self.c1Label = c1Label
         self.c2Label = c2Label
-        # connect button to function on_click
         self.button.clicked.connect(self.on_click)
         grid = QVBoxLayout()
         grid.addWidget(self.textbox)
@@ -346,4 +305,3 @@ class ClusterSelectPopup(QWidget):
             self.c2Label.setText(Cluster2.ClusterName)
         selectedArray=[]
         self.close()
-

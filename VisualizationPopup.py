@@ -3,10 +3,8 @@ import matplotlib.pyplot as plt
 import scanpy as sc
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from PyQt5.QtWidgets import QComboBox, QLabel, QVBoxLayout, QWidget, QFormLayout,QPushButton,QHBoxLayout
-
+from PyQt5.QtWidgets import QComboBox, QLabel, QVBoxLayout, QWidget, QFormLayout
 import math
-
 
 class visualizationPopup(QWidget):
     def __init__(self,grouplen,AutoClustering):
@@ -21,13 +19,9 @@ class visualizationPopup(QWidget):
             self.plotComboBox.addItems(['Gene Ranking','Dendrogram', 'Dot Plot', 'Violin', 'Stacked Violin', 'Matrix Plot'])
         self.plotLabel = QLabel("Plot Type:")
         self.plotLabel.setBuddy(self.plotComboBox)
-        
         self.plotComboBox.currentIndexChanged.connect(self.updateGraph)
-
-        #ELEPHANT Make rank grapg default
         self.figure = plt.figure()
         self.canvasPop = FigureCanvas(self.figure)
-
         self.toolbar = NavigationToolbar(self.canvasPop, self)
         self.plotSelectionLayout = QFormLayout()
         self.plotSelectionLayout.addRow(self.plotLabel,self.plotComboBox)
@@ -39,25 +33,22 @@ class visualizationPopup(QWidget):
         self.setLayout(grid)
         self.updateGraph()
         
-
     def updateGraph(self, *args):
-
         plot = self.plotComboBox.currentText()
-        self.figure.clear() #clear current figure
+        self.figure.clear()
         self.canvasPop.flush_events()
         if plot == 'Gene Ranking':
-            ax = self.figure.add_subplot(111) # create an axis
+            ax = self.figure.add_subplot(111) 
             img = cv.imread('./figures/rank_genes_groups_leiden.png')
             ax.imshow(img)
         elif plot == 'Dendrogram':
-            ax = self.figure.add_subplot(111) # create an axis
+            ax = self.figure.add_subplot(111)
             img = cv.imread('./figures/dendrogram.png')
             ax.imshow(img)
         elif  plot == 'Dot Plot':
-            ax = self.figure.add_subplot(111) # create an axis
+            ax = self.figure.add_subplot(111) 
             img = cv.imread('./figures/dotplot_.png')
             ax.imshow(img)
-        #ELEPHANT figure out the plots
         elif plot == 'Violin':
             i=0
             index=1
@@ -67,7 +58,6 @@ class visualizationPopup(QWidget):
             else:
                 column = 3
                 row = math.ceil(self.grouplen/3)
-            
             for i in range (self.grouplen):
                 ax = self.figure.add_subplot(row,column,index)
                 index=index+1
