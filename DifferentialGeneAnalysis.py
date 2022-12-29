@@ -1,15 +1,22 @@
-import MainWindowFunctions as mwf
-import VisualizationPopup as vp
-from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QFormLayout, QHBoxLayout, QLabel, QComboBox,QWidget,QLineEdit,QFrame,QTabWidget,QTabBar
-import pandas as pd
 import numpy as np
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from PyQt5.QtCore import Qt
-import matplotlib.pyplot as plt
+import pandas as pd
 import scanpy as sc
 import anndata as anndata
-from matplotlib.widgets import LassoSelector
+import ThreadHandling as th
+import VisualizationPopup as vp
+import MainWindowFunctions as mwf
+
+import matplotlib.pyplot as plt
 from matplotlib.path import Path
+from matplotlib.widgets import LassoSelector
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+
+from PyQt5 import QtWebEngineWidgets
+from PyQt5.QtCore import Qt,pyqtSlot, QRunnable,pyqtSignal,QThreadPool
+from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QFormLayout, QHBoxLayout, QLabel, QComboBox,QWidget,QLineEdit,QFrame,QTabWidget,QTabBar
+
+# import plotly.express as px
+# import plotly.graph_objects as go
 
 AutoClustering = False
 Cluster1 = mwf.Cluster()
@@ -23,6 +30,8 @@ adata = anndata.AnnData(
   obs = None,
   var = None)
 grouplen = 0
+fig = None
+plottype = ''
 
 class Window(QWidget):
 
@@ -60,6 +69,8 @@ class Window(QWidget):
         self.figure = plt.figure()
         self.canvas = FigureCanvas(self.figure)
         self.compareWindow = None
+        self.displayMessageWindow = None
+        self.browser = QtWebEngineWidgets.QWebEngineView(self)
 
         self.calcDiffGeneButton = QPushButton("Calculate Differential Gene Expression", self)
         self.calcDiffGeneButton.pressed.connect(self.calcDiffGene)
@@ -111,6 +122,7 @@ class Window(QWidget):
         self.hideClusteringLayout()
         self.hideComparisonLayout()
         self.plotScatter()
+        self.threadpool = QThreadPool()
 
     def reset(self, *args):
         Cluster1.ClusterName = ""
@@ -132,7 +144,8 @@ class Window(QWidget):
         self.compareButton.hide()
         self.resetButton.hide()
     
-    def scatterPlotFigure(self, plottype, color):
+    def scatterPlotFigure(self, color):
+        global fig
         if plottype == 'PCA':
             fig = sc.pl.pca(adata, color=color, return_fig=True)
         elif plottype == 'UMAP':
@@ -140,6 +153,7 @@ class Window(QWidget):
         return fig
 
     def plotScatter(self, *args):
+        global plottype
         self.tabs.removeTab(1)
         self.reset()
         self.hideComparisonLayout()
@@ -152,26 +166,39 @@ class Window(QWidget):
         gene = genes.index[genes['gene_ids'] == genetype].tolist()[0]
         self.figure.clear() 
         self.canvas.close()
-        fig = self.scatterPlotFigure(plottype,gene)
+        self.scatterPlotFigure(gene)
         self.canvas = FigureCanvas(fig)
-        selector = SelectFromCollection(fig.axes[0], fig.axes[0].collections[0], plottype, self.c1Label, self.c2Label)
         self.canvas.draw()
         self.graphLayout.addWidget(self.canvas)
         self.graphLayout.addLayout(self.clusteringLayout)
         self.manualClusteringButton.show()
         self.leidenClusteringButton.show()
 
+        # LASSO SELECT USING PLOTLY
+        # dfadata = adata.to_df()
+        # obsm = adata.obsm.to_df()
+        # fig = px.scatter(x = obsm.X_pca1, y = obsm.X_pca2,labels={'x':'PC1', 'y':'PC2'}, title=gene, template="simple_white",color=dfadata[gene])
+        # fig.update_layout(paper_bgcolor="#ffffff")
+        # f = go.FigureWidget(fig)
+        # self.browser.setHtml(f.to_html(include_plotlyjs='cdn'))
+        # print(self.browser.page().profile())
+        # # scatter = f.data[0]
+        # # scatter.on_selection(self.update_point)
+        # self.graphLayout.addWidget(self.browser)
+
+    # def update_point(trace, points, selector):
+    #     print(points)
+
     def compare(self, *args):
         global grouplen
         clusterCategory = pd.Series(["0","1"], dtype='category')
-        plottype = self.typeComboBox.currentText()
         for barcode in Cluster1.ClusterData:
             adata.obs.loc[barcode,'leiden'] = clusterCategory[0]
         for barcode in Cluster2.ClusterData:
             adata.obs.loc[barcode,'leiden'] = clusterCategory[1]
         grouplen = len(adata.obs['leiden'].value_counts())
         self.canvas.close()
-        fig = self.scatterPlotFigure(plottype,'leiden')
+        self.scatterPlotFigure('leiden')
         self.canvas = FigureCanvas(fig)
         self.canvas.draw()
         self.hideComparisonLayout()
@@ -183,13 +210,12 @@ class Window(QWidget):
         global AutoClustering, grouplen
         self.manualClusteringButton.hide()
         self.leidenClusteringButton.hide()
-        plottype = self.typeComboBox.currentText()
         sc.tl.leiden(adata)
         grouplen = len(adata.obs['leiden'].value_counts())
         if grouplen>2:
             AutoClustering = True
         self.canvas.close()
-        fig = self.scatterPlotFigure(plottype,'leiden')
+        self.scatterPlotFigure('leiden')
         self.canvas = FigureCanvas(fig)
         self.canvas.draw()
         self.graphLayout.addWidget(self.canvas,1)
@@ -197,29 +223,28 @@ class Window(QWidget):
         self.calcDiffGeneButton.show()
 
     def calcDiffGene(self, *args):
-        self.parent.statusbar.showMessage('Executing differential gene analysis...')
-        sc.tl.rank_genes_groups(adata, groupby='leiden', method='wilcoxon', key_added='wilcoxon')
-        sc.tl.dendrogram(adata, 'leiden')
-        self.parent.statusbar.showMessage('Creating xlsx file of differential gene expression data...')
-        mwf.createXlsx(adata,grouplen)
-        self.parent.statusbar.showMessage('Generating graphs for visualization...')
-        mwf.generateGraphs(adata, AutoClustering)
-        self.tab2 = vp.visualizationPopup(grouplen,AutoClustering)
+        self.calcDiffGeneButton.setEnabled(False)
+        thread = calcDiffGeneThread()
+        thread.signal.progress_signal.connect(self.reportProgress)
+        thread.signal.return_signal.connect(self.completePreprocess)
+        self.threadpool.start(thread)
+
+    def completePreprocess(self):
+        self.calcDiffGeneButton.setEnabled(True)
+        self.displayMessageWindow.close()
+        self.parent.parent.statusbar.clearMessage()
+        self.tab2 = vp.visualizationPopup(grouplen,AutoClustering,adata,self)
         self.tabs.addTab(self.tab2,"Differential Gene Expression Representation")
         self.tabs.setCurrentIndex(1)
-        self.parent.statusbar.clearMessage()
-        self.canvas.close()
-        self.graphLayout.removeWidget(self.calcDiffGeneButton)
-        self.calcDiffGeneButton.hide()
-        plottype = self.typeComboBox.currentText()
-        fig = self.scatterPlotFigure(plottype,'leiden')
-        self.canvas = FigureCanvas(fig)
-        self.canvas.draw()
-        self.graphLayout.addWidget(self.canvas,1)
-        self.graphLayout.addWidget(self.calcDiffGeneButton)
-        self.calcDiffGeneButton.show()
+
+    def reportProgress(self,signal):
+        print(signal)
+        self.parent.parent.statusbar.showMessage(signal)
+        self.displayMessageWindow = th.displayMessagePopup(signal)
+        self.displayMessageWindow.show()
     
     def manualClustering(self, *args):
+        selector = SelectFromCollection(fig.axes[0], fig.axes[0].collections[0], self.c1Label, self.c2Label)
         self.manualClusteringButton.hide()
         self.leidenClusteringButton.hide()
         global obsm
@@ -230,15 +255,32 @@ class Window(QWidget):
         self.compareButton.show()
         self.resetButton.show()
 
+class calcDiffGeneThread(QRunnable):
+    signal = pyqtSignal()
+
+    def __init__(self):
+        super(calcDiffGeneThread, self).__init__()     
+        self.signal = th.Signals()    
+
+    @pyqtSlot()
+    def run(self):
+        self.signal.progress_signal.emit('Executing differential gene analysis...')
+        sc.tl.rank_genes_groups(adata, groupby='leiden', method='wilcoxon', key_added='wilcoxon')
+        self.signal.progress_signal.emit('Calculating dendrogram...')
+        sc.tl.dendrogram(adata, 'leiden')
+        self.signal.progress_signal.emit('Creating xlsx file of differential gene expression data...')
+        mwf.createXlsx(adata,grouplen)
+        self.signal.return_signal.emit()
+        
+
 class SelectFromCollection:
 
-    def __init__(self, ax, collection, plottype, c1Label, c2Label, alpha_other=0.3):
+    def __init__(self, ax, collection, c1Label, c2Label, alpha_other=0.3):
         self.canvas = ax.figure.canvas
         self.collection = collection
         self.alpha_other = alpha_other
         self.xys = collection.get_offsets()
         self.Npts = len(self.xys)
-        self.plottype = plottype
         self.c1Label = c1Label
         self.c2Label = c2Label
         if plottype == 'PCA':
@@ -295,13 +337,14 @@ class ClusterSelectPopup(QWidget):
 
     def on_click(self):
         global selectedArray
-        if not Cluster1.ClusterName:
-            Cluster1.ClusterName = self.textbox.text()
-            Cluster1.ClusterData = selectedArray
-            self.c1Label.setText(Cluster1.ClusterName)
-        else :
-            Cluster2.ClusterName = self.textbox.text()
-            Cluster2.ClusterData = selectedArray
-            self.c2Label.setText(Cluster2.ClusterName)
+        if selectedArray:
+            if not Cluster1.ClusterName:
+                Cluster1.ClusterName = self.textbox.text()
+                Cluster1.ClusterData = selectedArray
+                self.c1Label.setText(Cluster1.ClusterName)
+            else :
+                Cluster2.ClusterName = self.textbox.text()
+                Cluster2.ClusterData = selectedArray
+                self.c2Label.setText(Cluster2.ClusterName)
         selectedArray=[]
         self.close()
