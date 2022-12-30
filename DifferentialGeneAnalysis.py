@@ -191,20 +191,21 @@ class Window(QWidget):
 
     def compare(self, *args):
         global grouplen
-        clusterCategory = pd.Series(["0","1"], dtype='category')
-        for barcode in Cluster1.ClusterData:
-            adata.obs.loc[barcode,'leiden'] = clusterCategory[0]
-        for barcode in Cluster2.ClusterData:
-            adata.obs.loc[barcode,'leiden'] = clusterCategory[1]
-        grouplen = len(adata.obs['leiden'].value_counts())
-        self.canvas.close()
-        self.scatterPlotFigure('leiden')
-        self.canvas = FigureCanvas(fig)
-        self.canvas.draw()
-        self.hideComparisonLayout()
-        self.graphLayout.addWidget(self.canvas,1)
-        self.graphLayout.addWidget(self.calcDiffGeneButton)
-        self.calcDiffGeneButton.show()
+        if Cluster1.ClusterData and Cluster2.ClusterData:
+            clusterCategory = pd.Series(["0","1"], dtype='category')
+            for barcode in Cluster1.ClusterData:
+                adata.obs.loc[barcode,'leiden'] = clusterCategory[0]
+            for barcode in Cluster2.ClusterData:
+                adata.obs.loc[barcode,'leiden'] = clusterCategory[1]
+            grouplen = len(adata.obs['leiden'].value_counts())
+            self.canvas.close()
+            self.scatterPlotFigure('leiden')
+            self.canvas = FigureCanvas(fig)
+            self.canvas.draw()
+            self.hideComparisonLayout()
+            self.graphLayout.addWidget(self.canvas,1)
+            self.graphLayout.addWidget(self.calcDiffGeneButton)
+            self.calcDiffGeneButton.show()
 
     def leidenClustering(self, *args):
         global AutoClustering, grouplen
